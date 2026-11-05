@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>SingerFlow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: one working surface per tool. A tab strip on top, a large instrument panel (chart or timeline) first, readouts and controls beside or below it. */
+:root{
+  --bg:#f4f1f7; --panel:#ffffff; --ink:#24132b; --muted:#665672; --line:#d9d0e0; --grid:#e8e1ee;
+  --accent:#7b2d8e; --accent-ink:#ffffff;
+  --f1:#c2410c; --f2:#0b6e80; --good:#1a7f53; --warn:#9a6a10;
+  --c-plosive:#c2410c; --c-fric:#1d4ed8; --c-nasal:#7e22ce; --c-liquid:#0f766e; --c-affr:#92600a;
+  --display:'DM Serif Display',Georgia,serif; --body:'Instrument Sans',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#170d1c; --panel:#22142a; --ink:#f3ebf7; --muted:#b6a3c2; --line:#3a2846; --grid:#2f1f3a;
+  --accent:#d49bea; --accent-ink:#1b0e22;
+  --f1:#ff9b64; --f2:#5fd3e6; --good:#5fd69b; --warn:#f0c060;
+  --c-plosive:#ff9a6b; --c-fric:#8fb0ff; --c-nasal:#cfa0ff; --c-liquid:#5fd8c8; --c-affr:#f0c060; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#170d1c; --panel:#22142a; --ink:#f3ebf7; --muted:#b6a3c2; --line:#3a2846; --grid:#2f1f3a;
+  --accent:#d49bea; --accent-ink:#1b0e22;
+  --f1:#ff9b64; --f2:#5fd3e6; --good:#5fd69b; --warn:#f0c060;
+  --c-plosive:#ff9a6b; --c-fric:#8fb0ff; --c-nasal:#cfa0ff; --c-liquid:#5fd8c8; --c-affr:#f0c060; color-scheme:dark;}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1060px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,5vw,40px);margin:0;letter-spacing:.2px}
+header p{margin:4px 0 0;color:var(--muted);max-width:62ch;text-wrap:pretty}
+nav{display:flex;gap:6px;margin:18px 0 14px;flex-wrap:wrap}
+nav button{font:inherit;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+nav button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.tab{display:none}
+section.tab.on{display:block}
+.grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}
+@media (max-width:820px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.panel h2{font-size:13px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-weight:600;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+select,input[type=text],input[type=number],textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+textarea{width:100%;resize:vertical}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.status{font-size:13px;color:var(--muted);margin-top:8px;min-height:20px}
+.status.err{color:var(--warn)}
+canvas{display:block;width:100%;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.reads{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.read{border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.read .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.read .v{font-family:var(--mono);font-size:22px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.read .s{font-size:12px;color:var(--muted)}
+.v.f1{color:var(--f1)} .v.f2{color:var(--f2)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--muted)}
+.pill.good{color:var(--good);border-color:var(--good)}
+.note{font-size:13px;color:var(--muted);margin:10px 0 0;max-width:70ch;text-wrap:pretty}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 0 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.words{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-top:12px}
+.word{border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0}
+.word .w{font-family:var(--display);font-size:20px;line-height:1.1;display:flex;align-items:baseline;gap:2px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:13px;padding:1px 5px;border-radius:5px;color:#fff}
+.chip.plosive{background:var(--c-plosive)} .chip.fricative{background:var(--c-fric)} .chip.nasal{background:var(--c-nasal)} .chip.liquid{background:var(--c-liquid)} .chip.affricate{background:var(--c-affr)}
+html[data-theme="dark"] .chip{color:#1b0e22}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chip{color:#1b0e22}}
+.vow{font-family:var(--display);font-size:24px;padding:0 3px}
+.bar{display:flex;height:12px;margin:8px 0 4px;border-radius:6px;overflow:hidden;background:var(--grid)}
+.bar span{display:block;height:100%}
+.bar .on{background:var(--c-plosive)} .bar .vo{background:var(--accent)} .bar .co{background:var(--c-fric)}
+.word .t{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.word ul{margin:6px 0 0;padding-left:16px;font-size:12.5px;color:var(--ink)}
+.notes{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.nchip{border:1px solid var(--line);border-radius:8px;padding:4px 8px;text-align:center;font-family:var(--mono);min-width:48px}
+.nchip b{display:block;font-size:15px;font-weight:500}
+.nchip span{font-size:11px;color:var(--muted)}
+.nchip.held{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.nchip.live{outline:2px solid var(--good)}
+.ctrl{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+footer{margin-top:22px;font-size:12.5px;color:var(--muted);max-width:75ch}
+footer h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>SingerFlow</h1>
+  <p>Three practice tools for singers: a live formant tuner, a consonant coach called Blow! Singer, and a gospel run builder. Style ideas come from published analysis of Mahalia Jackson's singing. Nothing here imitates or synthesizes her voice.</p>
+</header>
+<nav role="tablist" aria-label="Tools">
+  <button role="tab" id="t-formant" aria-selected="true" data-tab="formant">Formant Tuner</button>
+  <button role="tab" id="t-consonants" aria-selected="false" data-tab="consonants">Blow! Singer</button>
+  <button role="tab" id="t-runs" aria-selected="false" data-tab="runs">Gospel Runs</button>
+</nav>
+
+<!-- ============ FORMANT TUNER ============ -->
+<section class="tab on" id="formant" role="tabpanel" aria-labelledby="t-formant">
+  <div class="grid2">
+    <div class="panel">
+      <h2>Vowel space: F2 across, F1 down</h2>
+      <canvas id="chart" height="340" aria-label="Vowel chart showing live F1 and F2"></canvas>
+      <div class="legend"><span><i style="background:var(--f1)"></i>F1 (jaw and tongue height)</span><span><i style="background:var(--f2)"></i>F2 (tongue front to back)</span><span><i style="background:var(--good);opacity:.5"></i>harmonic lattice, green = within 25 cents</span></div>
+      <p class="note">Each faint line is a harmonic of your sung note. Singers often tune F1 onto a harmonic so a vowel rings louder with less effort. Formant estimates get less reliable as pitch rises, because the harmonics become too sparse to outline the vocal tract. In tests on synthetic vowels the readings were close up to about 260 Hz (middle C) and tended to lock onto a harmonic from about 330 Hz (E4) upward, so treat higher notes as rough.</p>
+    </div>
+    <div class="panel">
+      <h2>Source</h2>
+      <div class="row">
+        <button class="btn primary" id="btnMic">Start microphone</button>
+        <label class="btn" for="fileIn" style="margin:0">Load audio file</label>
+        <input id="fileIn" type="file" accept="audio/*" hidden>
+        <button class="btn" id="btnStop">Stop</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="f">Demo vowel<select id="demoVowel"></select></label>
+        <label class="f">Demo pitch<select id="demoPitch"><option value="130.81">C3 131 Hz</option><option value="220" selected>A3 220 Hz</option><option value="329.63">E4 330 Hz</option></select></label>
+        <button class="btn" id="btnDemo">Play demo</button>
+      </div>
+      <div class="status" id="status">Showing an example reading. Start the microphone, load a recording, or play the demo vowel.</div>
+      <h2 style="margin-top:14px">Reading</h2>
+      <div class="reads">
+        <div class="read"><div class="k">Pitch</div><div class="v" id="rNote">A3</div><div class="s" id="rHz">220 Hz</div></div>
+        <div class="read"><div class="k">Nearest vowel</div><div class="v" id="rVowel">ɑ</div><div class="s" id="rVowelS">example</div></div>
+        <div class="read"><div class="k">F1</div><div class="v f1" id="rF1">760</div><div class="s">Hz</div></div>
+        <div class="read"><div class="k">F2</div><div class="v f2" id="rF2">1400</div><div class="s">Hz</div></div>
+      </div>
+      <div class="read" style="margin-top:10px"><div class="k">F1 against harmonics</div><div class="s" id="rTune">F1 sits near harmonic 3 (cents offset shown here).</div></div>
+      <div class="row" style="margin-top:10px">
+        <label class="f">Reference set<select id="refSet"><option value="f">Female or alto range</option><option value="m">Male range</option></select></label>
+        <label class="f">Target vowel<select id="target"><option value="">None</option></select></label>
+      </div>
+      <p class="note" id="guide"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BLOW! SINGER ============ -->
+<section class="tab" id="consonants" role="tabpanel" aria-labelledby="t-consonants">
+  <div class="panel">
+    <h2>Lyric line</h2>
+    <textarea id="lyric" rows="2" aria-label="Lyric line">Lord, lift me higher when the road runs long</textarea>
+    <div class="ctrl" style="margin-top:12px">
+      <label class="f">Tempo (BPM), one word per beat<input type="number" id="cBpm" value="66" min="40" max="140"></label>
+      <label class="f">Consonant strength <span id="cStrV">100%</span><input type="range" id="cStr" min="50" max="150" value="100"></label>
+    </div>
+    <div class="legend" id="cLegend"></div>
+    <div class="words" id="words"></div>
+    <p class="note">Bars show one beat per word: the colored start is the consonant before the beat, the purple middle is the vowel, the blue end is the release. Lead times are starting estimates to tune by ear. Spelling-based parsing is approximate: silent letters, soft c and unusual words can be misread.</p>
+  </div>
+</section>
+
+<!-- ============ GOSPEL RUNS ============ -->
+<section class="tab" id="runs" role="tabpanel" aria-labelledby="t-runs">
+  <div class="grid2">
+    <div class="panel">
+      <h2>Held note, then a run</h2>
+      <canvas id="roll" height="200" aria-label="Pitch contour of the held note and run"></canvas>
+      <div class="notes" id="noteChips"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="btnPlay">Play pitch guide</button>
+        <button class="btn" id="btnNew">New run</button>
+        <button class="btn" id="btnCopy">Copy as text</button>
+      </div>
+      <div class="status" id="runStatus"></div>
+      <p class="note">The pitch guide is a plain synthesized tone for hearing the contour. It is not a voice model.</p>
+    </div>
+    <div class="panel">
+      <h2>Settings</h2>
+      <div class="ctrl" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        <label class="f">Key<select id="rKey"></select></label>
+        <label class="f">Scale<select id="rScale"><option value="minp">Minor pentatonic</option><option value="majp">Major pentatonic</option><option value="blues">Blues</option></select></label>
+        <label class="f">Run length<select id="rLen"><option>4</option><option>5</option><option selected>6</option><option>7</option></select></label>
+        <label class="f">Contour<select id="rShape"><option value="fall">Falling</option><option value="turn">Up then down</option><option value="rise">Rising</option></select></label>
+        <label class="f">Practice stage<select id="rStage"><option value="1">1. Consonant (clean pitches)</option><option value="2">2. Narrow vowel</option><option value="3">3. Lyric vowel</option></select></label>
+        <label class="f">Syllable<select id="rSyl"><option value="d">d (doo/dah)</option><option value="l">l (loo/lah)</option><option value="n">n (noo/nah)</option></select></label>
+        <label class="f">Lyric vowel<select id="rVow"><option>ah</option><option>oh</option><option>ay</option><option>ee</option></select></label>
+        <label class="f">Tempo (BPM) <b id="rBpmV">80</b><input type="range" id="rBpm" min="60" max="140" step="5" value="80"></label>
+        <label class="f">Vibrato rate <b id="vRateV">6.5 Hz</b><input type="range" id="vRate" min="4" max="8" step="0.5" value="6.5"></label>
+        <label class="f">Vibrato depth <b id="vDepV">±60 cents</b><input type="range" id="vDep" min="0" max="120" step="10" value="60"></label>
+      </div>
+      <label class="row" style="gap:6px"><input type="checkbox" id="rGlide" checked> Glide up into the held note</label>
+      <div class="row" style="margin-top:10px"><button class="btn" id="btnLadder">Clean pass: +5 BPM</button></div>
+      <p class="note">Method: learn the run on a consonant, keep it clean at 80 BPM, add 5 BPM per clean pass, then move to a narrow vowel and finally the lyric vowel.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <h3>What this is built on</h3>
+  <p>Published analysis of Mahalia Jackson's recordings (HfM Weimar pop voices study) describes a vibrato near 6 to 7 Hz, a glide into long notes, runs of about 4 to 7 notes at the end of long notes, short phrases with breaths inside them, and almost entirely pentatonic note choice. Consonant and run practice follows common voice-teaching guidance. Formant tuning follows the harmonic-proximity idea in the Finding Resonance tool: distance from a formant to the nearest harmonic in cents.</p>
+  <p>Microphone audio is analysed in your browser and is never uploaded. Reference vowel values are approximate speech averages and shift in singing. This is a practice aid, not a substitute for a teacher.</p>
+</footer>
+</div>
+
+<script>
+// <DSP>
+const DSP = (() => {
+  const NOTE = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+  function decimate(x, f){
+    if (f <= 1) return Float64Array.from(x);
+    const m = Math.floor(x.length / f), y = new Float64Array(m);
+    for (let i = 0; i < m; i++){ let s = 0; for (let j = 0; j < f; j++) s += x[i*f+j]; y[i] = s / f; }
+    return y;
+  }
+  function rms(x){ let s = 0; for (let i = 0; i < x.length; i++) s += x[i]*x[i]; return Math.sqrt(s / x.length); }
+  // Normalised autocorrelation pitch tracker. Picks the shortest strong peak to avoid octave errors.
+  function pitch(x, fs, fmin = 70, fmax = 1100){
+    const n = x.length, minLag = Math.max(2, Math.floor(fs / fmax)), maxLag = Math.min(Math.floor(fs / fmin), n - 3);
+    let mean = 0; for (let i = 0; i < n; i++) mean += x[i]; mean /= n;
+    const z = new Float64Array(n); let e = 0;
+    for (let i = 0; i < n; i++){ z[i] = x[i] - mean; e += z[i]*z[i]; }
+    if (e <= 0) return { f0: 0, clarity: 0 };
+    const r = new Float64Array(maxLag + 2);
+    for (let lag = minLag - 1; lag <= maxLag + 1; lag++){
+      let s = 0; for (let i = 0; i < n - lag; i++) s += z[i]*z[i+lag];
+      r[lag] = (s / (n - lag)) / (e / n);
+    }
+    const peaks = []; let best = 0;
+    for (let l = minLag; l <= maxLag; l++){
+      if (r[l] > r[l-1] && r[l] >= r[l+1] && r[l] > 0.3){ peaks.push(l); if (r[l] > best) best = r[l]; }
+    }
+    if (!peaks.length) return { f0: 0, clarity: 0 };
+    let lag = peaks.find(l => r[l] >= 0.95 * best);
+    const a = r[lag-1], b = r[lag], c = r[lag+1], d = a - 2*b + c;
+    const shift = d !== 0 ? 0.5 * (a - c) / d : 0;
+    return { f0: fs / (lag + shift), clarity: best };
+  }
+  function lpc(x, order){
+    const n = x.length, r = new Float64Array(order + 1);
+    for (let k = 0; k <= order; k++){ let s = 0; for (let i = 0; i < n - k; i++) s += x[i]*x[i+k]; r[k] = s; }
+    r[0] *= 1.0001; r[0] += 1e-9;
+    const a = new Float64Array(order + 1); a[0] = 1; let err = r[0];
+    for (let i = 1; i <= order; i++){
+      let acc = r[i]; for (let j = 1; j < i; j++) acc += a[j]*r[i-j];
+      const k = -acc / err, prev = a.slice();
+      for (let j = 1; j < i; j++) a[j] = prev[j] + k*prev[i-j];
+      a[i] = k; err *= (1 - k*k); if (err <= 0) break;
+    }
+    return a;
+  }
+  // Formant candidates = peaks of the LPC spectral envelope.
+  function formants(x, fs, order){
+    const n = x.length, y = new Float64Array(n);
+    y[0] = x[0]; for (let i = 1; i < n; i++) y[i] = x[i] - 0.97*x[i-1];
+    for (let i = 0; i < n; i++) y[i] *= 0.54 - 0.46*Math.cos(2*Math.PI*i/(n-1));
+    const a = lpc(y, order), N = 512, fmaxEval = Math.min(5000, fs/2 - 50), env = new Float64Array(N);
+    for (let k = 0; k < N; k++){
+      const w = 2*Math.PI*(k*fmaxEval/(N-1))/fs; let re = 1, im = 0;
+      for (let j = 1; j <= order; j++){ re += a[j]*Math.cos(w*j); im -= a[j]*Math.sin(w*j); }
+      env[k] = 1 / Math.sqrt(re*re + im*im);
+    }
+    const out = [];
+    for (let k = 1; k < N - 1; k++){
+      if (env[k] > env[k-1] && env[k] >= env[k+1]){
+        const l0 = Math.log(env[k-1]), l1 = Math.log(env[k]), l2 = Math.log(env[k+1]), d = l0 - 2*l1 + l2;
+        const sh = d !== 0 ? 0.5*(l0 - l2)/d : 0, f = (k + sh)*fmaxEval/(N-1);
+        if (f > 180) out.push({ f, mag: env[k] });
+      }
+    }
+    return out;
+  }
+  function analyze(buf, fs){
+    const level = rms(buf);
+    if (level < 0.004) return { level, voiced: false };
+    const dp = Math.max(1, Math.round(fs / 24000));
+    const p = pitch(decimate(buf.subarray(Math.max(0, buf.length - 2048*dp)), dp), fs/dp);
+    if (!p.f0 || p.clarity < 0.5) return { level, voiced: false };
+    const df = Math.max(1, Math.round(fs / 11025)), nWin = Math.round(0.04 * fs);
+    const seg = decimate(buf.subarray(buf.length - nWin), df), fsd = fs / df;
+    const fm = formants(seg, fsd, Math.round(fsd/1000) + 2);
+    return { level, voiced: true, f0: p.f0, clarity: p.clarity, F1: fm[0] ? fm[0].f : 0, F2: fm[1] ? fm[1].f : 0, F3: fm[2] ? fm[2].f : 0 };
+  }
+  function hzToNote(f){
+    const m = 69 + 12*Math.log2(f/440), mi = Math.round(m);
+    return { name: NOTE[((mi % 12) + 12) % 12] + (Math.floor(mi/12) - 1), cents: Math.round((m - mi)*100), midi: mi };
+  }
+  function midiToHz(m){ return 440 * Math.pow(2, (m - 69)/12); }
+  function midiName(m){ return NOTE[((m % 12) + 12) % 12] + (Math.floor(m/12) - 1); }
+  function harmonicOffset(F, f0){
+    const n = Math.max(1, Math.round(F / f0));
+    return { n, cents: 1200*Math.log2(F / (n*f0)) };
+  }
+  return { decimate, rms, pitch, lpc, formants, analyze, hzToNote, midiToHz, midiName, harmonicOffset };
+})();
+// </DSP>
+
+// ---------- reference vowels: approximate speech averages (Peterson & Barney style), shift in singing ----------
+const REF = {
+  m: { 'i':[270,2290], 'ɪ':[390,1990], 'ɛ':[530,1840], 'æ':[660,1720], 'ɑ':[730,1090], 'ɔ':[570,840], 'ʊ':[440,1020], 'u':[300,870], 'ʌ':[640,1190] },
+  f: { 'i':[310,2790], 'ɪ':[430,2480], 'ɛ':[610,2330], 'æ':[860,2050], 'ɑ':[850,1220], 'ɔ':[590,920], 'ʊ':[470,1160], 'u':[370,950], 'ʌ':[760,1400] }
+};
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- tabs ----------
+const TABS = ['formant','consonants','runs'];
+function showTab(name){
+  if (!TABS.includes(name)) name = 'formant';
+  TABS.forEach(t => { $(t).classList.toggle('on', t === name); $('t-'+t).setAttribute('aria-selected', String(t === name)); });
+  if (name === 'formant') drawChart(); if (name === 'runs') drawRoll();
+}
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => { location.hash = b.dataset.tab; showTab(b.dataset.tab); }));
+window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+
+// ================= FORMANT TUNER =================
+let ctx, analyser, srcNode, stream, demo, bufSrc, timer, lastVoiced = 0;
+const hist = { f0: [], f1: [], f2: [] }, trail = [];
+let cur = { f0: 220, F1: 760, F2: 1400, example: true };
+const demoSel = $('demoVowel'), tgtSel = $('target');
+Object.keys(REF.f).forEach(v => { demoSel.add(new Option('/'+v+'/', v)); tgtSel.add(new Option('/'+v+'/', v)); });
+demoSel.value = 'ɑ';
+
+const median = a => { const s = [...a].sort((x,y) => x-y); return s[Math.floor(s.length/2)]; };
+function setStatus(t, err){ const s = $('status'); s.textContent = t; s.classList.toggle('err', !!err); }
+
+function ensureCtx(){
+  if (!ctx){ ctx = new (window.AudioContext || window.webkitAudioContext)(); analyser = ctx.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0; }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+function stopSource(){
+  if (timer){ clearInterval(timer); timer = null; }
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (srcNode){ try{ srcNode.disconnect(); }catch(e){} srcNode = null; }
+  if (bufSrc){ try{ bufSrc.stop(); }catch(e){} try{ bufSrc.disconnect(); }catch(e){} bufSrc = null; }
+  if (demo){ try{ demo.osc.stop(); demo.lfo.stop(); }catch(e){} try{ demo.out.disconnect(); }catch(e){} demo = null; }
+}
+function startLoop(){
+  const buf = new Float32Array(analyser.fftSize);
+  timer = setInterval(() => {
+    analyser.getFloatTimeDomainData(buf);
+    const r = DSP.analyze(buf, ctx.sampleRate), now = performance.now();
+    if (r.voiced && r.F1 && r.F2){
+      lastVoiced = now;
+      [['f0', r.f0], ['f1', r.F1], ['f2', r.F2]].forEach(([k, v]) => { hist[k].push(v); if (hist[k].length > 7) hist[k].shift(); });
+      cur = { f0: median(hist.f0), F1: median(hist.f1), F2: median(hist.f2), example: false };
+      trail.push([cur.F2, cur.F1]); if (trail.length > 30) trail.shift();
+      render();
+    } else if (now - lastVoiced > 500 && !cur.example){ cur = { ...cur, idle: true }; render(); }
+  }, 45);
+}
+async function startMic(){
+  stopSource();
+  try{
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('nomic');
+    ensureCtx();
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    srcNode = ctx.createMediaStreamSource(stream); srcNode.connect(analyser);
+    setStatus('Listening. Sing a sustained vowel at a steady pitch.'); startLoop();
+  }catch(e){
+    stopSource();
+    setStatus('This page cannot reach the microphone here (the viewer blocks it, or permission was denied). Open the standalone file in your browser for live mic, or use Load audio file or Play demo.', true);
+  }
+}
+async function loadFile(file){
+  if (!file) return; stopSource();
+  try{
+    ensureCtx();
+    const ab = await ctx.decodeAudioData(await file.arrayBuffer());
+    bufSrc = ctx.createBufferSource(); bufSrc.buffer = ab; bufSrc.connect(analyser); analyser.connect(ctx.destination);
+    bufSrc.onended = () => { setStatus('Finished.'); if (timer){ clearInterval(timer); timer = null; } };
+    bufSrc.start(); setStatus('Analysing ' + file.name + ' as it plays.'); startLoop();
+  }catch(e){ setStatus('Could not read that audio file. Try a WAV or MP3.', true); }
+}
+function demoFormants(){
+  const set = REF[$('refSet').value][demoSel.value]; return set;
+}
+function startDemo(){
+  stopSource(); ensureCtx();
+  const [F1, F2] = demoFormants(), f0 = parseFloat($('demoPitch').value);
+  const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = f0;
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 6; const lg = ctx.createGain(); lg.gain.value = 25; lfo.connect(lg); lg.connect(osc.detune);
+  const out = ctx.createGain(); out.gain.value = 0.5;
+  const mk = (f, q, g) => { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const gn = ctx.createGain(); gn.gain.value = g; osc.connect(b); b.connect(gn); gn.connect(out); return b; };
+  const b1 = mk(F1, 6, 1), b2 = mk(F2, 8, .6); mk(Math.max(2600, F2 + 700), 10, .25);
+  out.connect(analyser); const ao = ctx.createGain(); ao.gain.value = .2; out.connect(ao); ao.connect(ctx.destination);
+  osc.start(); lfo.start(); demo = { osc, lfo, out, b1, b2 };
+  setStatus('Playing a synthetic /' + demoSel.value + '/ with light vibrato. Change the demo vowel to watch the point move.'); startLoop();
+}
+demoSel.addEventListener('change', () => { if (demo){ const [F1, F2] = demoFormants(); demo.b1.frequency.setTargetAtTime(F1, ctx.currentTime, .05); demo.b2.frequency.setTargetAtTime(F2, ctx.currentTime, .05); } });
+$('btnMic').addEventListener('click', startMic);
+$('btnDemo').addEventListener('click', startDemo);
+$('btnStop').addEventListener('click', () => { stopSource(); setStatus('Stopped.'); });
+$('fileIn').addEventListener('change', e => loadFile(e.target.files[0]));
+$('refSet').addEventListener('change', () => { render(); });
+tgtSel.addEventListener('change', () => { render(); });
+
+function nearestVowel(F1, F2){
+  const set = REF[$('refSet').value]; let best = null, bd = 1e9;
+  for (const [v, [a, b]] of Object.entries(set)){ const d = Math.hypot(2*Math.log(F1/a), Math.log(F2/b)); if (d < bd){ bd = d; best = v; } }
+  return best;
+}
+function render(){
+  const c = cur;
+  const n = DSP.hzToNote(c.f0), ho = DSP.harmonicOffset(c.F1, c.f0);
+  $('rNote').textContent = n.name; $('rHz').textContent = c.f0.toFixed(0) + ' Hz, ' + (n.cents >= 0 ? '+' : '') + n.cents + ' cents';
+  $('rF1').textContent = Math.round(c.F1); $('rF2').textContent = Math.round(c.F2);
+  const nv = nearestVowel(c.F1, c.F2); $('rVowel').textContent = nv; $('rVowelS').textContent = c.example ? 'example' : (c.idle ? 'last reading' : 'closest reference');
+  const tuned = Math.abs(ho.cents) <= 25;
+  $('rTune').innerHTML = 'F1 is ' + (ho.cents >= 0 ? '+' : '') + ho.cents.toFixed(0) + ' cents from harmonic ' + ho.n + ' <span class="pill ' + (tuned ? 'good' : '') + '">' + (tuned ? 'tuned' : 'not tuned') + '</span>' + (c.example ? ' (example)' : '');
+  const t = tgtSel.value;
+  if (t){
+    const [a, b] = REF[$('refSet').value][t], d1 = a - c.F1, d2 = b - c.F2, parts = [];
+    if (Math.abs(d1) > 40) parts.push(d1 > 0 ? 'open the jaw a little (F1 up about ' + Math.round(d1) + ' Hz)' : 'close the jaw or raise the tongue (F1 down about ' + Math.round(-d1) + ' Hz)');
+    if (Math.abs(d2) > 80) parts.push(d2 > 0 ? 'bring the tongue forward or spread the lips (F2 up about ' + Math.round(d2) + ' Hz)' : 'pull the tongue back or round the lips (F2 down about ' + Math.round(-d2) + ' Hz)');
+    $('guide').textContent = parts.length ? 'Toward /' + t + '/: ' + parts.join('; ') + '. Rough guide only.' : 'Close to /' + t + '/.';
+  } else $('guide').textContent = '';
+  drawChart();
+}
+function drawChart(){
+  const cv = $('chart'), W = cv.clientWidth || 600, H = Math.round(Math.min(460, Math.max(280, W*.72))), dpr = window.devicePixelRatio || 1;
+  if (!cv.clientWidth) return;
+  cv.width = W*dpr; cv.height = H*dpr; cv.style.height = H + 'px';
+  const g = cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const pl = 44, pr = 12, pt = 12, pb = 30, pw = W - pl - pr, ph = H - pt - pb;
+  const F2a = 3000, F2b = 500, F1a = 150, F1b = 1000;
+  const X = f => pl + (F2a - f)/(F2a - F2b)*pw, Y = f => pt + (f - F1a)/(F1b - F1a)*ph;
+  g.font = '11px ' + css('--mono'); g.fillStyle = css('--muted'); g.strokeStyle = css('--grid'); g.lineWidth = 1;
+  for (let f = 500; f <= 3000; f += 500){ g.beginPath(); g.moveTo(X(f), pt); g.lineTo(X(f), pt+ph); g.stroke(); g.textAlign = 'center'; g.fillText(f, X(f), H - 12); }
+  for (let f = 200; f <= 1000; f += 200){ g.beginPath(); g.moveTo(pl, Y(f)); g.lineTo(pl+pw, Y(f)); g.stroke(); g.textAlign = 'right'; g.fillText(f, pl - 6, Y(f) + 4); }
+  g.textAlign = 'center'; g.fillText('F2 (Hz)', pl + pw/2, H - 1);
+  g.save(); g.translate(10, pt + ph/2); g.rotate(-Math.PI/2); g.fillText('F1 (Hz)', 0, 0); g.restore();
+  // harmonic lattice on the F1 axis, with +/-25 cent bands
+  const f0 = cur.f0;
+  g.fillStyle = css('--good'); g.globalAlpha = .22;
+  for (let k = 1; k*f0 <= F1b + 50; k++){ const h = k*f0; if (h < F1a - 50) continue; const lo = h*Math.pow(2, -25/1200), hi = h*Math.pow(2, 25/1200); g.fillRect(pl, Y(lo), pw, Math.max(1.5, Y(hi) - Y(lo))); }
+  if (f0*(pw/(F2a-F2b)) >= 9){ for (let k = 1; k*f0 <= F2a; k++){ const h = k*f0; if (h < F2b) continue; const lo = h*Math.pow(2, -25/1200), hi = h*Math.pow(2, 25/1200); g.fillRect(X(hi), pt, Math.max(1.5, X(lo) - X(hi)), ph); } }
+  g.globalAlpha = 1;
+  // reference vowels
+  const set = REF[$('refSet').value], nv = nearestVowel(cur.F1, cur.F2);
+  g.textAlign = 'center'; g.font = '15px ' + css('--display');
+  for (const [v, [a, b]] of Object.entries(set)){ g.fillStyle = v === nv ? css('--ink') : css('--muted'); g.globalAlpha = v === nv ? 1 : .75; g.fillText(v, X(b), Y(a) + 5); }
+  g.globalAlpha = 1;
+  const t = tgtSel.value;
+  if (t){ const [a, b] = set[t]; g.strokeStyle = css('--accent'); g.lineWidth = 2; g.beginPath(); g.arc(X(b), Y(a), 14, 0, 7); g.stroke(); }
+  // trail and live point
+  trail.forEach(([f2, f1], i) => { g.fillStyle = css('--f2'); g.globalAlpha = (i+1)/trail.length*.45; g.beginPath(); g.arc(X(f2), Y(f1), 3, 0, 7); g.fill(); });
+  g.globalAlpha = cur.idle ? .35 : 1;
+  const px = X(Math.min(F2a, Math.max(F2b, cur.F2))), py = Y(Math.min(F1b, Math.max(F1a, cur.F1)));
+  g.lineWidth = 3; g.strokeStyle = css('--f1'); g.fillStyle = cur.example ? 'transparent' : css('--f1');
+  g.beginPath(); g.arc(px, py, 9, 0, 7); g.fill(); g.stroke(); g.globalAlpha = 1;
+}
+new ResizeObserver(() => { drawChart(); drawRoll(); }).observe(document.body);
+
+// ================= BLOW! SINGER (consonants) =================
+const CMAP = { p:['plosive',0], b:['plosive',1], t:['plosive',0], d:['plosive',1], k:['plosive',0], g:['plosive',1], c:['plosive',0], q:['plosive',0], ck:['plosive',0], qu:['plosive',0],
+  f:['fricative',0], v:['fricative',1], s:['fricative',0], z:['fricative',1], x:['fricative',0], h:['fricative',0], sh:['fricative',0], ph:['fricative',0], th:['fricative',null],
+  ch:['affricate',0], j:['affricate',1], m:['nasal',1], n:['nasal',1], ng:['nasal',1], l:['liquid',1], r:['liquid',1], w:['liquid',1], wh:['liquid',1], y:['liquid',1] };
+const CLASS_LABEL = { plosive:'Plosive (p b t d k g)', fricative:'Fricative (f v s z sh th h)', nasal:'Nasal (m n ng)', liquid:'Glide or liquid (l r w y)', affricate:'Affricate (ch j)' };
+const ONSET_MS = { plosive:[30,40], fricative:[60,90], nasal:[100,100], liquid:[70,70], affricate:[60,60] };
+const CODA_MS = { plosive:40, fricative:90, nasal:110, liquid:80, affricate:70 };
+const TIPS = {
+  onset: {
+    plosive:['Land the burst just before the beat so the vowel arrives on the beat.', 'Keep the pitch ready: start the vowel the instant the burst releases.'],
+    fricative:['Keep it short so the pitch is not delayed. Voiced ones (v, z) can buzz briefly, then open to the vowel.', 'Do not slip an extra h between the consonant and the vowel.'],
+    nasal:['Use the hum to find forward resonance (nose and lips buzz), then open to the vowel without changing the pitch.'],
+    liquid:['Voice it right away on the pitch, then glide into the vowel.'],
+    affricate:['Treat it as a quick t or d plus a hiss: crisp, before the beat.']
+  },
+  coda: {
+    plosive:['Release the final consonant on the last instant of the note; keep it clean with no added vowel sound.'],
+    fricative:['Hold the vowel full length, then add the hiss or buzz at the very end.'],
+    nasal:['Keep the pitch ringing through the hum, then release. A voiced ending can sustain on a legato line.'],
+    liquid:['Keep the pitch through the final l or r, then let go.'],
+    affricate:['Short release at the very end of the note.']
+  }
+};
+function tokens(s){ return (s.match(/sh|ch|th|ng|ph|ck|wh|qu|./g) || []).filter(t => CMAP[t]); }
+function splitWord(raw){
+  let w = raw.toLowerCase().replace(/[^a-z]/g, ''); if (!w) return null;
+  let core = w; const V = 'aeiou';
+  if (core.length > 2 && core.endsWith('e') && !V.includes(core[core.length-2]) && /[aeiouy]/.test(core.slice(0,-1))) core = core.slice(0,-1);
+  const isV = (c, i) => V.includes(c) || (c === 'y' && i > 0);
+  let first = -1, last = -1; for (let i = 0; i < core.length; i++){ if (isV(core[i], i)){ if (first < 0) first = i; last = i; } }
+  if (first < 0) return { word: raw, onset: tokens(core), vowel: '', coda: [] };
+  let end = first; while (end + 1 < core.length && isV(core[end+1], end+1)) end++;
+  return { word: raw.replace(/[^A-Za-z']/g, ''), onset: tokens(core.slice(0, first)), vowel: core.slice(first, end+1), coda: tokens(core.slice(last+1)) };
+}
+function renderWords(){
+  const strength = parseInt($('cStr').value, 10)/100; $('cStrV').textContent = Math.round(strength*100) + '%';
+  const beat = 60000/Math.max(40, Math.min(140, parseFloat($('cBpm').value) || 66));
+  const parts = $('lyric').value.split(/\s+/).map(splitWord).filter(Boolean);
+  const box = $('words'); box.textContent = '';
+  parts.forEach(p => {
+    const lead = Math.min(220, p.onset.reduce((s, t) => s + ONSET_MS[CMAP[t][0]][CMAP[t][1] ? 1 : 0], 0)*strength);
+    const rel = Math.min(220, p.coda.reduce((s, t) => s + CODA_MS[CMAP[t][0]], 0)*strength);
+    const vow = Math.max(0, beat - rel);
+    const card = document.createElement('div'); card.className = 'word';
+    const w = document.createElement('div'); w.className = 'w';
+    const chip = t => { const s = document.createElement('span'); s.className = 'chip ' + CMAP[t][0]; s.textContent = t; s.title = CLASS_LABEL[CMAP[t][0]] + (CMAP[t][1] === 1 ? ', voiced' : CMAP[t][1] === 0 ? ', unvoiced' : ''); return s; };
+    p.onset.forEach(t => w.appendChild(chip(t)));
+    const v = document.createElement('span'); v.className = 'vow'; v.textContent = p.vowel || '·'; w.appendChild(v);
+    p.coda.forEach(t => w.appendChild(chip(t)));
+    card.appendChild(w);
+    const total = lead + beat, bar = document.createElement('div'); bar.className = 'bar';
+    [['on', lead], ['vo', vow], ['co', rel]].forEach(([c, ms]) => { const s = document.createElement('span'); s.className = c; s.style.width = (ms/total*100) + '%'; bar.appendChild(s); });
+    card.appendChild(bar);
+    const tm = document.createElement('div'); tm.className = 't';
+    tm.textContent = 'starts ' + Math.round(lead) + ' ms early · vowel ' + Math.round(vow) + ' ms · release ' + Math.round(rel) + ' ms';
+    card.appendChild(tm);
+    const ul = document.createElement('ul'); const tips = [];
+    if (p.onset.length) tips.push(TIPS.onset[CMAP[p.onset[0]][0]][0]);
+    if (p.onset.length > 1) tips.push('Say the whole cluster before the beat and land the vowel on the downbeat.');
+    if (p.coda.length) tips.push(TIPS.coda[CMAP[p.coda[0]][0]][0]);
+    tips.slice(0, 3).forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+    card.appendChild(ul); box.appendChild(card);
+  });
+  if (!parts.length){ const d = document.createElement('p'); d.className = 'note'; d.textContent = 'Type a line of lyrics above to see where each consonant goes.'; box.appendChild(d); }
+}
+$('cLegend').innerHTML = Object.entries(CLASS_LABEL).map(([k, l]) => '<span><i style="background:var(--c-' + ({plosive:'plosive',fricative:'fric',nasal:'nasal',liquid:'liquid',affricate:'affr'})[k] + ')"></i>' + l + '</span>').join('');
+['lyric','cBpm','cStr'].forEach(id => $(id).addEventListener('input', renderWords));
+
+// ================= GOSPEL RUNS =================
+const SCALES = { minp:[0,3,5,7,10], majp:[0,2,4,7,9], blues:[0,3,5,6,7,10] };
+const KEYS = ['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+KEYS.forEach((k, i) => $('rKey').add(new Option(k, i)));
+$('rKey').value = 9;
+let run = null, rollTimer = [], actx;
+function genRun(){
+  let root = 48 + parseInt($('rKey').value, 10); const offs = SCALES[$('rScale').value], n = parseInt($('rLen').value, 10), shape = $('rShape').value;
+  // Keep the held note (the 5th) between C4 and B4, a comfortable alto-to-tenor zone. The run has an octave of room below it.
+  while (root + 7 < 60) root += 12; while (root + 7 >= 72) root -= 12;
+  const notes = []; for (let o = 0; o < 4; o++) offs.forEach(x => notes.push(root - 12 + 12*o + x));
+  const five = offs.indexOf(7), held = offs.length + (five >= 0 ? five : 0);
+  // Keep every run note within an octave of the held note.
+  const lo = notes.findIndex(m => m >= notes[held] - 12), hi = notes.length - 1 - [...notes].reverse().findIndex(m => m <= notes[held] + 12);
+  const clamp = i => Math.max(lo, Math.min(hi, i));
+  let idx = shape === 'fall' ? held + 2 : shape === 'rise' ? held - 2 : held; const seq = [];
+  for (let i = 0; i < n; i++){
+    seq.push(clamp(idx));
+    if (shape === 'fall') idx -= Math.random() < .3 ? 2 : 1;
+    else if (shape === 'rise') idx += Math.random() < .3 ? 2 : 1;
+    else idx += i < Math.ceil(n/2) - 1 ? (Math.random() < .3 ? 2 : 1) : -(Math.random() < .3 ? 2 : 1);
+  }
+  run = { held: notes[held], notes: seq.map(i => notes[i]) };
+}
+function syllables(count){
+  const st = $('rStage').value, c = $('rSyl').value, vw = $('rVow').value;
+  const narrow = { d:'doo', l:'loo', n:'noo' }[c];
+  const open = { d:'d', l:'l', n:'n' }[c] + vw;
+  const out = []; for (let i = 0; i < count; i++){ out.push(st === '1' ? (c + (i % 2 ? 'ah' : 'oo')) : st === '2' ? (i < count/2 ? narrow : narrow.replace('oo','ee')) : vw); }
+  return out;
+}
+function renderRun(){
+  if (!run) genRun();
+  const sy = syllables(run.notes.length), box = $('noteChips'); box.textContent = '';
+  const h = document.createElement('div'); h.className = 'nchip held'; h.innerHTML = '<b>' + DSP.midiName(run.held) + '</b><span>held</span>'; box.appendChild(h);
+  run.notes.forEach((m, i) => { const d = document.createElement('div'); d.className = 'nchip'; d.id = 'rn' + i; d.innerHTML = '<b>' + DSP.midiName(m) + '</b><span>' + sy[i] + '</span>'; box.appendChild(d); });
+  $('rBpmV').textContent = $('rBpm').value; $('vRateV').textContent = $('vRate').value + ' Hz'; $('vDepV').textContent = '±' + $('vDep').value + ' cents';
+  drawRoll();
+}
+function drawRoll(){
+  const cv = $('roll'); if (!cv || !cv.clientWidth || !run) return;
+  const W = cv.clientWidth, H = 200, dpr = window.devicePixelRatio || 1; cv.width = W*dpr; cv.height = H*dpr; cv.style.height = H + 'px';
+  const g = cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const all = [run.held, ...run.notes], lo = Math.min(...all) - 2, hi = Math.max(...all) + 2, pad = 14;
+  const Y = m => H - pad - (m - lo)/(hi - lo)*(H - 2*pad);
+  g.strokeStyle = css('--grid'); g.lineWidth = 1; g.font = '10px ' + css('--mono'); g.fillStyle = css('--muted'); g.textAlign = 'left';
+  for (let m = Math.ceil(lo); m <= hi; m++){ if (((m % 12) + 12) % 12 === 0 || m === Math.ceil(lo)){ g.beginPath(); g.moveTo(0, Y(m)); g.lineTo(W, Y(m)); g.stroke(); g.fillText(DSP.midiName(m), 3, Y(m) - 2); } }
+  const heldW = W*.34, x0 = 34, stepW = (W - x0 - heldW - 16)/run.notes.length;
+  g.strokeStyle = css('--accent'); g.lineWidth = 6; g.lineCap = 'round';
+  if ($('rGlide').checked){ g.globalAlpha = .5; g.beginPath(); g.moveTo(x0, Y(run.held - 2)); g.lineTo(x0 + 24, Y(run.held)); g.stroke(); g.globalAlpha = 1; }
+  g.beginPath();
+  const dep = parseFloat($('vDep').value)/100, rate = parseFloat($('vRate').value);
+  for (let x = 0; x <= heldW - 30; x += 2){ const yy = Y(run.held + dep*Math.sin(2*Math.PI*rate*(x/(heldW-30))*1.6)*.9); if (x === 0) g.moveTo(x0 + 24 + x, yy); else g.lineTo(x0 + 24 + x, yy); }
+  g.stroke();
+  g.strokeStyle = css('--f1'); g.lineWidth = 8;
+  run.notes.forEach((m, i) => { const x = x0 + heldW + 8 + i*stepW; g.beginPath(); g.moveTo(x, Y(m)); g.lineTo(x + stepW*.8, Y(m)); g.stroke(); });
+}
+function playRun(){
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+  rollTimer.forEach(clearTimeout); rollTimer = [];
+  const bpm = parseFloat($('rBpm').value), beat = 60/bpm, sixteenth = beat/4, t0 = actx.currentTime + .08;
+  const rate = parseFloat($('vRate').value), dep = parseFloat($('vDep').value), detached = $('rStage').value === '1';
+  const voice = (midi, start, dur, opts = {}) => {
+    const o1 = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), lp = actx.createBiquadFilter();
+    o1.type = 'triangle'; o2.type = 'sawtooth'; const f = DSP.midiToHz(midi);
+    const g2 = actx.createGain(); g2.gain.value = .18; o2.connect(g2); o1.connect(lp); g2.connect(lp); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.connect(g); g.connect(actx.destination);
+    if (opts.glideFrom){ o1.frequency.setValueAtTime(DSP.midiToHz(opts.glideFrom), start); o1.frequency.exponentialRampToValueAtTime(f, start + .14); o2.frequency.setValueAtTime(DSP.midiToHz(opts.glideFrom), start); o2.frequency.exponentialRampToValueAtTime(f, start + .14); }
+    else { o1.frequency.value = f; o2.frequency.value = f; }
+    if (opts.vibrato && dep > 0){ const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = rate; lg.gain.setValueAtTime(0, start); lg.gain.linearRampToValueAtTime(dep, start + .5); l.connect(lg); lg.connect(o1.detune); lg.connect(o2.detune); l.start(start); l.stop(start + dur + .1); }
+    g.gain.setValueAtTime(0, start); g.gain.linearRampToValueAtTime(.16, start + .02); g.gain.setValueAtTime(.16, start + dur*(opts.gate || .95)); g.gain.linearRampToValueAtTime(0, start + dur*(opts.gate || .95) + .04);
+    o1.start(start); o2.start(start); o1.stop(start + dur + .1); o2.stop(start + dur + .1);
+  };
+  const heldDur = beat*2;
+  voice(run.held, t0, heldDur, { vibrato: true, glideFrom: $('rGlide').checked ? run.held - 2 : null });
+  run.notes.forEach((m, i) => {
+    const st = t0 + heldDur + i*sixteenth, last = i === run.notes.length - 1, d = last ? beat : sixteenth;
+    voice(m, st, d, { gate: detached ? .6 : .97, vibrato: last });
+    rollTimer.push(setTimeout(() => { const el = $('rn' + i); if (el) el.classList.add('live'); }, (st - actx.currentTime)*1000));
+    rollTimer.push(setTimeout(() => { const el = $('rn' + i); if (el) el.classList.remove('live'); }, (st - actx.currentTime + d)*1000));
+  });
+  $('runStatus').textContent = 'Playing at ' + bpm + ' BPM: ' + (run.notes.length) + ' notes at sixteenth-note speed.';
+}
+function runText(){
+  const sy = syllables(run.notes.length);
+  return [KEYS[$('rKey').value] + ' ' + $('rScale').selectedOptions[0].text + ', ' + $('rBpm').value + ' BPM', 'Held: ' + DSP.midiName(run.held) + (dep() ? ', vibrato ' + $('vRate').value + ' Hz' : ''), 'Run: ' + run.notes.map((m, i) => DSP.midiName(m) + ' (' + sy[i] + ')').join(' ')].join('\n');
+  function dep(){ return parseFloat($('vDep').value) > 0; }
+}
+$('btnPlay').addEventListener('click', playRun);
+$('btnNew').addEventListener('click', () => { genRun(); renderRun(); });
+$('btnCopy').addEventListener('click', async () => {
+  const txt = runText();
+  try{ await navigator.clipboard.writeText(txt); $('runStatus').textContent = 'Copied.'; }
+  catch(e){ const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); $('runStatus').textContent = 'Copied.'; }catch(_){ $('runStatus').textContent = txt; } ta.remove(); }
+});
+$('btnLadder').addEventListener('click', () => { const r = $('rBpm'); r.value = Math.min(140, parseInt(r.value, 10) + 5); renderRun(); });
+['rKey','rScale','rLen','rShape'].forEach(id => $(id).addEventListener('change', () => { genRun(); renderRun(); }));
+['rStage','rSyl','rVow','rBpm','vRate','vDep','rGlide'].forEach(id => $(id).addEventListener('input', renderRun));
+
+// ---------- start ----------
+renderWords(); genRun(); renderRun(); render(); showTab(location.hash.slice(1));
+</script>
+
+</body>
+</html>

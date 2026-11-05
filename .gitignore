@@ -1,0 +1,8 @@
+node_modules/
+__pycache__/
+*.pyc
+# Never commit voice recordings
+*.wav
+*.flac
+*.mp3
+*.m4a
